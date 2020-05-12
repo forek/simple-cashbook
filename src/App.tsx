@@ -1,28 +1,29 @@
-/* eslint-disable jsx-a11y/anchor-is-valid */
-import React from 'react';
+import React from 'react'
 import Drapdown from './components/Dropdown'
+import useCashbook from './hooks/useCashbook'
 
-function App() {
+function App () {
+  const { state, actions, io } = useCashbook()
+
   return (
-    <div className="App">
-      <button type="button" className="btn btn-primary">Primary</button>
+    <div className='App'>
+      <button type='button' className='btn btn-primary'>Primary</button>
 
       <Drapdown
-        renderTrigger={() => (
-          <button className="btn btn-secondary dropdown-toggle" type="button">
-            fxxking
-          </button>
-        )}
+        className='d-inline-block'
         menu={[
           {
             key: 'hello',
             text: 'hello'
           }
         ]}
-        onClick={() => {}}
-      />
+      >
+        <button className='btn btn-secondary dropdown-toggle' type='button'>
+          fxxking
+        </button>
+      </Drapdown>
     </div>
-  );
+  )
 }
 
-export default App;
+export default App
