@@ -7,7 +7,9 @@ module.exports = {
     'no-unused-vars': 'off',
     '@typescript-eslint/no-unused-vars': 'warn',
     "semi": "off",
-    "@typescript-eslint/semi": ['error', 'never']
+    "@typescript-eslint/semi": ['error', 'never'],
+    'react/jsx-tag-spacing': 'off',
+    'no-unused-expressions': 'off'
   },
   parser: '@typescript-eslint/parser',
   plugins: [

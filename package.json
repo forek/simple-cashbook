@@ -13,6 +13,7 @@
     "@typescript-eslint/parser": "^2.32.0",
     "bootstrap": "^4.4.1",
     "csv-parse": "^4.9.0",
+    "decimal.js": "^10.2.0",
     "eslint-plugin-react-hooks": "^4.0.0",
     "react": "^16.13.1",
     "react-dom": "^16.13.1",

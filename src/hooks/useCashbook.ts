@@ -1,4 +1,6 @@
-import { useEffect, useReducer, useRef } from 'react'
+import { useEffect, useReducer, useRef, createContext } from 'react'
+import csvParse from 'csv-parse'
+import Decimal from 'decimal.js'
 
 const LOCAL_STORAGE_BILL = 'simple_cashbook_bill_data'
 const LOCAL_STORAGE_CATEGORIES = 'simple_cashbook_categories_data'
@@ -18,7 +20,7 @@ declare namespace PayloadTypes {
 
   export interface Filters {
     col: BillColumns
-    value: number | string | undefined
+    value: Bill[keyof Bill] | undefined
   }
 
   export type Sorter = SorterState
@@ -26,17 +28,26 @@ declare namespace PayloadTypes {
 
 type Payload = PayloadTypes.State | PayloadTypes.Import | PayloadTypes.Add | PayloadTypes.Filters | PayloadTypes.Sorter | null
 
-interface Bill {
-  type: number
+type CategoriesType = 0 | 1
+
+export interface Bill {
+  type: CategoriesType
   time: string
   category: string
-  amount: number
+  amount: Decimal
 }
 
-interface Categories {
+export interface Categories {
   id: string
-  type: string
+  type: CategoriesType
   name: string
+}
+
+interface CategoriesIndex {
+  [id: string]: {
+    type: Categories['type']
+    name: Categories['name']
+  }
 }
 
 type SortDirection = 'ascend' | 'descend'
@@ -53,15 +64,16 @@ interface Sorter {
 
 type SorterState = Sorter
 
-type BillColumns = 'type' | 'time' | 'category' | 'amount'
+type BillColumns = keyof Bill
 
-interface BillTable extends Array<Bill> {}
+export interface BillTable extends Array<Bill> {}
 
-interface CategoriesTable extends Array<Categories> {}
+export interface CategoriesTable extends Array<Categories> {}
 
 interface CashbookState {
   bill: BillTable
   categories: CategoriesTable
+  categoriesIndex: CategoriesIndex
   result: BillTable
   filters: Filters
   sorter?: Sorter
@@ -94,6 +106,7 @@ enum t {
 const initalState: CashbookState = {
   bill: [],
   categories: [],
+  categoriesIndex: {},
   result: [],
   filters: {}
 }
@@ -106,14 +119,26 @@ const cashbook = {
     return { bill, categories }
   },
   import: (type: DataType, blob: Blob) => {
+    const parse = (str: string | null) => new Promise((resolve, reject) => {
+      if (!str) return resolve(null)
+      csvParse(str,
+        {
+          columns: header => header
+        },
+        (err, records) => {
+          if (err) return reject(err)
+          resolve(records)
+        })
+    })
+
     return new Promise((resolve, reject) => {
       const reader = new window.FileReader()
       reader.readAsText(blob, 'UTF-8')
 
-      reader.onload = function (e) {
+      reader.onload = async function (e) {
         switch (type) {
-          case 'bill': resolve(e.target?.result as BillTable | null); break
-          case 'categories': resolve(e.target?.result as CategoriesTable | null); break
+          case 'bill': resolve((await parse(e.target?.result as string | null)) as BillTable | null); break
+          case 'categories': resolve((await parse(e.target?.result as string | null)) as CategoriesTable | null); break
         }
       }
 
@@ -245,6 +270,14 @@ function createActions (dispatch: React.Dispatch<CashbookAction<Payload>>) {
   }
 }
 
+interface CashbookContextType {
+  actions?: ReturnType<typeof createActions>,
+  state?: CashbookState,
+  io?: typeof cashbook
+}
+
+export const CashbookContext = createContext<CashbookContextType>({})
+
 function useCashbook () {
   const iState = { ...initalState }
   iState.getCache = () => cache
@@ -255,7 +288,7 @@ function useCashbook () {
 
   useEffect(() => {
     const data = cashbook.load()
-    actions.init({ ...data, result: [], filters: {} })
+    actions.init({ ...data, result: [], filters: {}, categoriesIndex: {} })
   }, [])
 
   return { actions, state, io: cashbook }
