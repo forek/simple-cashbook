@@ -1,16 +1,17 @@
 import React from 'react'
 
-interface Props<T> {
+interface Props<T, P = {}> {
   dataSource?: T[]
   columns?: Array<{
     dataIndex?: keyof T
     key: string
     title: string
-    render?(value: T[keyof T] | null): JSX.Element
+    render?(value: T[keyof T] | null, record: T, extraData?: P): JSX.Element | boolean | string
   }>
+  columnsExtraData?: P
 }
 
-export default function Table<T> (props: Props<T>) {
+export default function Table<T, P> (props: Props<T, P>) {
   const { columns, dataSource } = props
   return (
     <table className='table'>
@@ -26,10 +27,10 @@ export default function Table<T> (props: Props<T>) {
             {
               columns?.map(col => {
                 if (!col.dataIndex && !col.render) return false
-                if (!col.dataIndex && col.render) return col.render(null)
+                if (!col.dataIndex && col.render) return <td key={col.key}>{col.render(null, item, props.columnsExtraData)}</td>
                 const currentValue = item[col.dataIndex as keyof T]
                 return (
-                  <td key={col.key}>{col.render ? col.render(currentValue) : currentValue}</td>
+                  <td key={col.key}>{col.render ? col.render(currentValue, item, props.columnsExtraData) : currentValue}</td>
                 )
               })
             }

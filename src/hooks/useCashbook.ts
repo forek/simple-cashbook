@@ -1,6 +1,9 @@
 import { useEffect, useReducer, useRef, createContext } from 'react'
 import csvParse from 'csv-parse'
-import Decimal from 'decimal.js'
+import { v4 as uuidv4 } from 'uuid'
+import { type } from 'os'
+
+// import Decimal from 'decimal.js'
 
 const LOCAL_STORAGE_BILL = 'simple_cashbook_bill_data'
 const LOCAL_STORAGE_CATEGORIES = 'simple_cashbook_categories_data'
@@ -18,6 +21,8 @@ declare namespace PayloadTypes {
     data: Bill | Categories
   }
 
+  export type Remove = Bill
+
   export interface Filters {
     col: BillColumns
     value: Bill[keyof Bill] | undefined
@@ -26,15 +31,16 @@ declare namespace PayloadTypes {
   export type Sorter = SorterState
 }
 
-type Payload = PayloadTypes.State | PayloadTypes.Import | PayloadTypes.Add | PayloadTypes.Filters | PayloadTypes.Sorter | null
+type Payload = PayloadTypes.State | PayloadTypes.Import | PayloadTypes.Add | PayloadTypes.Filters | PayloadTypes.Sorter | PayloadTypes.Remove | null
 
 type CategoriesType = 0 | 1
 
 export interface Bill {
+  id: string
   type: CategoriesType
   time: string
   category: string
-  amount: Decimal
+  amount: number
 }
 
 export interface Categories {
@@ -43,7 +49,7 @@ export interface Categories {
   name: string
 }
 
-interface CategoriesIndex {
+export interface CategoriesIndex {
   [id: string]: {
     type: Categories['type']
     name: Categories['name']
@@ -98,6 +104,7 @@ enum t {
   init = 'INIT',
   import = 'IMPORT',
   add = 'ADD',
+  remove = 'REOMVE',
   setFilter = 'SET_FILTER',
   setSorter = 'SET_SORTER',
   removeSorter = 'REMOVE_SORTER'
@@ -137,8 +144,26 @@ const cashbook = {
 
       reader.onload = async function (e) {
         switch (type) {
-          case 'bill': resolve((await parse(e.target?.result as string | null)) as BillTable | null); break
-          case 'categories': resolve((await parse(e.target?.result as string | null)) as CategoriesTable | null); break
+          case 'bill': {
+            const data = (await parse(e.target?.result as string | null)) as BillTable | null
+            if (!data) return resolve([])
+            data.forEach(item => {
+              item.amount = parseFloat(item.amount as unknown as string)
+              item.type = parseInt(item.type as unknown as string) as CategoriesType
+              item.id = uuidv4()
+            })
+            resolve(data)
+            break
+          }
+          case 'categories': {
+            const data = (await parse(e.target?.result as string | null)) as CategoriesTable | null
+            if (!data) return resolve([])
+            data.forEach(item => {
+              item.type = parseInt(item.type as unknown as string) as CategoriesType
+            })
+            resolve(data)
+            break
+          }
         }
       }
 
@@ -151,7 +176,7 @@ const cashbook = {
 }
 
 const utils = {
-  updateTable<T extends Bill | Categories> (state: CashbookState, key: DataType, data: T | T[]) {
+  concatTable<T extends Bill | Categories> (state: CashbookState, key: DataType, data: T | T[]) {
     return {
       ...state,
       [key]: (state[key] as T[]).concat(data as T | T[])
@@ -198,8 +223,15 @@ function reducer (state: CashbookState, action: CashbookAction<Payload>): Cashbo
     case t.import: {
       const p = action.payload as PayloadTypes.Import
       switch (p.importType) {
-        case 'bill': return utils.applyFSP(utils.updateTable<Bill>(state, 'bill', p.data as BillTable))
-        case 'categories': return utils.updateTable<Categories>(state, 'categories', p.data as CategoriesTable)
+        case 'bill': return utils.applyFSP(utils.concatTable<Bill>(state, 'bill', p.data as BillTable))
+        case 'categories': {
+          const nextState = utils.concatTable<Categories>(state, 'categories', p.data as CategoriesTable)
+          nextState.categoriesIndex = nextState.categories.reduce((pre, v) => {
+            pre[v.id] = { type: v.type, name: v.name }
+            return pre
+          }, {} as CategoriesIndex)
+          return nextState
+        }
         default: return state
       }
     }
@@ -207,9 +239,23 @@ function reducer (state: CashbookState, action: CashbookAction<Payload>): Cashbo
     case t.add: {
       const p = action.payload as PayloadTypes.Add
       switch (p.dataType) {
-        case 'bill': return utils.applyFSP(utils.updateTable<Bill>(state, 'bill', p.data as Bill))
-        case 'categories': return utils.updateTable<Categories>(state, 'categories', p.data as Categories)
+        case 'bill': return utils.applyFSP(utils.concatTable<Bill>(state, 'bill', p.data as Bill))
+        case 'categories': return utils.concatTable<Categories>(state, 'categories', p.data as Categories)
         default: return state
+      }
+    }
+
+    case t.remove: {
+      const record = action.payload as PayloadTypes.Remove
+      const { bill } = state
+      const index = bill.findIndex(item => item.id === record.id)
+      if (index >= 0) {
+        const nextState = { ...state }
+        nextState.bill = [...nextState.bill]
+        nextState.bill.splice(index, 1)
+        return utils.applyFSP(nextState)
+      } else {
+        return state
       }
     }
 
@@ -254,6 +300,9 @@ function createActions (dispatch: React.Dispatch<CashbookAction<Payload>>) {
     },
     add (type: DataType, data: Bill | Categories) {
       dispatch({ type: t.add, payload: { dataType: type, data } })
+    },
+    remove (record: Bill) {
+      dispatch({ type: t.remove, payload: record })
     },
     setFilter<T extends BillColumns> (col: T, value: Bill[T]) {
       dispatch({ type: t.setFilter, payload: { col, value } })

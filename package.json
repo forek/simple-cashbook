@@ -9,17 +9,20 @@
     "@types/node": "^12.0.0",
     "@types/react": "^16.9.0",
     "@types/react-dom": "^16.9.0",
+    "@types/uuid": "^7.0.3",
     "@typescript-eslint/eslint-plugin": "^2.32.0",
     "@typescript-eslint/parser": "^2.32.0",
     "bootstrap": "^4.4.1",
     "csv-parse": "^4.9.0",
     "decimal.js": "^10.2.0",
     "eslint-plugin-react-hooks": "^4.0.0",
+    "moment": "^2.25.3",
     "react": "^16.13.1",
     "react-dom": "^16.13.1",
     "react-scripts": "3.4.1",
     "standardx": "^5.0.0",
-    "typescript": "~3.7.2"
+    "typescript": "~3.7.2",
+    "uuid": "^8.0.0"
   },
   "scripts": {
     "start": "react-scripts start",
