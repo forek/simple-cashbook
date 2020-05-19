@@ -8,7 +8,7 @@ function App () {
   const context = useCashbook()
 
   return (
-    <div className='App'>
+    <div className='App pb-3'>
       <nav className='nav bg-white py-3'>
         <a className='nav-link active' href='#'>简易记账本</a>
       </nav>

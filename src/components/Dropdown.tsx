@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, PropsWithChildren, ReactElement, CSSProperties } from 'react'
-
+import React, { useState, PropsWithChildren, ReactElement, CSSProperties } from 'react'
+import useCancelListener from '../hooks/useCancelListener'
 interface DropdownProps {
   menu: {
     text: string
@@ -12,28 +12,7 @@ interface DropdownProps {
 
 export default function Dropdown (props: PropsWithChildren<DropdownProps>) {
   const [visible, setVisible] = useState(false)
-  const dropdownEl = useRef(null)
-  const listenerFn = useRef(null as unknown as (e: MouseEvent) => void | null)
-
-  useEffect(() => {
-    const fn = (e: MouseEvent) => {
-      let el = e.target as Node | null
-
-      do {
-        if (el === dropdownEl.current) return
-        el = el.parentNode
-      } while (el)
-
-      setVisible(false)
-    }
-
-    document.body.addEventListener('click', fn)
-    listenerFn.current = fn
-    return () => {
-      document.body.removeEventListener('click', listenerFn.current)
-    }
-  }, [])
-
+  const dropdownEl = useCancelListener(() => setVisible(false))
   const className = 'dropdown' + (props.className ? ` ${props.className}` : '')
 
   return (
@@ -51,7 +30,7 @@ export default function Dropdown (props: PropsWithChildren<DropdownProps>) {
           return false
         }
       })()}
-      <div className='dropdown-menu' style={{ display: visible ? 'block' : 'none' }}>
+      <div className='dropdown-menu overflow-auto' style={{ display: visible ? 'block' : 'none', maxHeight: 200 }}>
         {props.menu.map(item => (
           <div
             className='dropdown-item'

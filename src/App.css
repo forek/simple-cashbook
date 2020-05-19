@@ -1,17 +1,21 @@
-body {
-  background-color: #f8f9fb!important;
-}
-
-.bg-white {
+.App .bg-white {
   background-color: #FFF; 
 }
 
-#react-paginate ul {
-  display: inline-block;
-  padding-left: 15px;
-  padding-right: 15px;
+.App .dropdown-item {
+  cursor: pointer;
 }
 
-#react-paginate li {
+.App #react-paginate ul {
   display: inline-block;
+}
+
+.App #react-paginate li {
+  display: inline-block;
+  cursor: pointer;
+  user-select: none;
+}
+
+.App table td {
+  vertical-align: middle;
 }

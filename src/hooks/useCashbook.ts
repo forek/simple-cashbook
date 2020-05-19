@@ -40,7 +40,7 @@ type Payload = PayloadTypes.State | PayloadTypes.Import | PayloadTypes.Add | Pay
 type CategoriesType = 0 | 1
 
 export interface Bill {
-  id: string
+  id?: string
   type: CategoriesType
   time: string
   category: string
@@ -403,6 +403,7 @@ function createActions (dispatch: React.Dispatch<CashbookAction<Payload>>) {
       dispatch({ type: t.import, payload: { importType: type, data } })
     },
     add (type: DataType, data: Bill | Categories) {
+      if (type === 'bill' && !data.id) data.id = uuidv4()
       dispatch({ type: t.add, payload: { dataType: type, data } })
     },
     remove (record: Bill) {

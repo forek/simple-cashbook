@@ -17,7 +17,7 @@ export default function Table<T, P> (props: Props<T, P>) {
     <table className='table'>
       <thead>
         <tr>
-          {columns?.map(item => <th key={item.key}>{item.title}</th>)}
+          {columns?.map(item => <th className='border-top-0' key={item.key}>{item.title}</th>)}
         </tr>
       </thead>
 

@@ -1,8 +1,9 @@
-import React, { useContext } from 'react'
+import React, { useContext, useState } from 'react'
 import ReactPaginate from 'react-paginate'
 import { CashbookContext, Bill, BillTable, CategoriesTable, CategoriesIndex } from '../hooks/useCashbook'
 import { ToastContext } from './Toast'
 import ImportButton from './ImportButton'
+import AdditionModal from './AdditionModal'
 import Dropdown from './Dropdown'
 import Table from './Table'
 import moment from 'moment'
@@ -48,7 +49,7 @@ const billColumns = [
       return (
         <button
           type='button'
-          className='btn btn-danger d-inline-block'
+          className='btn btn-danger d-inline-block btn-sm'
           onClick={() => {
             const { onDeleteBill } = extraData
             onDeleteBill(record)
@@ -68,9 +69,10 @@ interface ColExDataType {
 
 const emptyFilter = [{ text: '无', value: '' }]
 
-export default function () {
+export default function Cashbook () {
   const { state, actions, io } = useContext(CashbookContext)
   const { toast } = useContext(ToastContext)
+  const [visible, setVisible] = useState(false)
 
   const colExData: ColExDataType = {
     categoriesIndex: state?.categoriesIndex,
@@ -80,7 +82,11 @@ export default function () {
   }
 
   return (
-    <div className='px-2'>
+    <div className='px-3'>
+      <AdditionModal
+        visible={visible}
+        onClose={() => { setVisible(false) }}
+      />
       <div className='mt-3 mb-3 p-4 bg-white'>
         <Dropdown
           className='d-inline-block'
@@ -95,7 +101,7 @@ export default function () {
             }
           }}
         >
-          <button className='mr-2 btn btn-success'>月份筛选: {state?.filters.time || '无'}</button>
+          <button className='mr-2 btn btn-primary'>月份筛选: {state?.filters.time || '无'}</button>
         </Dropdown>
         <Dropdown
           className='d-inline-block'
@@ -115,7 +121,12 @@ export default function () {
             }
           }}
         >
-          <button className='btn btn-success'>分类筛选: {state?.filters.category ? state.categoriesIndex[state?.filters.category].name : '无'}</button>
+          <button className='btn btn-primary'>分类筛选: {
+            state?.filters.category
+              ? state.categoriesIndex[state?.filters.category].name
+              : '无'
+          }
+          </button>
         </Dropdown>
         <div className='float-right'>
           <button
@@ -134,8 +145,17 @@ export default function () {
           >
             保存
           </button>
+          <button
+            type='button'
+            className='btn ml-2 btn-primary'
+            onClick={() => {
+              setVisible(!visible)
+            }}
+          >
+            添加账单
+          </button>
           <ImportButton
-            className='btn btn-primary ml-2'
+            className='btn btn-info ml-2'
             onImport={async (file) => {
               const result = (await io?.import('bill', file)) as BillTable
               if (result) actions?.import('bill', result)
@@ -144,7 +164,7 @@ export default function () {
             导入账单表
           </ImportButton>
           <ImportButton
-            className='btn btn-primary ml-2'
+            className='btn btn-info ml-2'
             onImport={async (file) => {
               const result = (await io?.import('categories', file)) as CategoriesTable
               if (result) actions?.import('categories', result)
@@ -154,12 +174,14 @@ export default function () {
           </ImportButton>
         </div>
       </div>
-      <div className='bg-white p-2'>
+      <div className='bg-white px-2'>
         <Table<Bill, ColExDataType>
           columns={billColumns}
           dataSource={state?.result}
           columnsExtraData={colExData}
         />
+      </div>
+      <div className='bg-white p-4 text-right'>
         <div id='react-paginate'>
           {
             state &&
@@ -169,6 +191,19 @@ export default function () {
                 forcePage={state.pagination.current}
                 pageRangeDisplayed={8}
                 marginPagesDisplayed={2}
+                containerClassName='pagination m-0'
+                pageClassName='page-item'
+                pageLinkClassName='page-link'
+                previousClassName='page-item'
+                nextClassName='page-item'
+                previousLinkClassName='page-link'
+                nextLinkClassName='page-link'
+                activeClassName='page-item active'
+                previousLabel='上一页'
+                nextLabel='下一页'
+                onPageChange={({ selected }) => {
+                  actions?.setPagination(selected)
+                }}
               />
           }
         </div>
