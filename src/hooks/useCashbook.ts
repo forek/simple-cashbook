@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, createContext } from 'react'
 import csvParse from 'csv-parse'
 import { v4 as uuidv4 } from 'uuid'
-import { type } from 'os'
+import moment from 'moment'
 
 // import Decimal from 'decimal.js'
 
@@ -29,9 +29,13 @@ declare namespace PayloadTypes {
   }
 
   export type Sorter = SorterState
+
+  export interface Pagination {
+    current: number
+  }
 }
 
-type Payload = PayloadTypes.State | PayloadTypes.Import | PayloadTypes.Add | PayloadTypes.Filters | PayloadTypes.Sorter | PayloadTypes.Remove | null
+type Payload = PayloadTypes.State | PayloadTypes.Import | PayloadTypes.Add | PayloadTypes.Filters | PayloadTypes.Sorter | PayloadTypes.Remove | PayloadTypes.Pagination | null
 
 type CategoriesType = 0 | 1
 
@@ -62,6 +66,23 @@ type Filters = {
   [col in BillColumns]?: string
 }
 
+interface Pagination {
+  current: number
+  perPage: number
+  total: number
+}
+
+type FilterSet = {
+  [col in BillColumns]: Bill[col][]
+}
+
+type FilterConfig = {
+  [col in BillColumns]?: {
+    active: boolean
+    transform(v: Bill[col]): string
+  }
+}
+
 interface Sorter {
   col: BillColumns
   direction: SortDirection
@@ -82,6 +103,9 @@ interface CashbookState {
   categoriesIndex: CategoriesIndex
   result: BillTable
   filters: Filters
+  filterSet: FilterSet
+  filterConfig: FilterConfig
+  pagination: Pagination
   sorter?: Sorter
   getCache?(): React.MutableRefObject<CashbookCache>
 }
@@ -107,7 +131,8 @@ enum t {
   remove = 'REOMVE',
   setFilter = 'SET_FILTER',
   setSorter = 'SET_SORTER',
-  removeSorter = 'REMOVE_SORTER'
+  removeSorter = 'REMOVE_SORTER',
+  setPagination = 'SET_PAGE'
 }
 
 const initalState: CashbookState = {
@@ -115,7 +140,31 @@ const initalState: CashbookState = {
   categories: [],
   categoriesIndex: {},
   result: [],
-  filters: {}
+  filters: {},
+  filterSet: {
+    id: [],
+    type: [],
+    time: [],
+    amount: [],
+    category: []
+  },
+  filterConfig: {
+    time: {
+      active: true,
+      transform: v => {
+        return moment(parseInt(v)).format('YYYY-MM')
+      }
+    },
+    category: {
+      active: true,
+      transform: v => v
+    }
+  },
+  pagination: {
+    current: 0,
+    perPage: 10,
+    total: 0
+  }
 }
 
 // Cashbook I/O API
@@ -172,6 +221,10 @@ const cashbook = {
         reject(e.target?.error)
       }
     })
+  },
+  save: (bill: BillTable, categories: CategoriesTable) => {
+    window.localStorage.setItem(LOCAL_STORAGE_BILL, JSON.stringify(bill))
+    window.localStorage.setItem(LOCAL_STORAGE_CATEGORIES, JSON.stringify(categories))
   }
 }
 
@@ -182,17 +235,52 @@ const utils = {
       [key]: (state[key] as T[]).concat(data as T | T[])
     }
   },
+  createCategoriesIndex (state: CashbookState) {
+    state.categoriesIndex = state.categories.reduce((pre, v) => {
+      pre[v.id] = { type: v.type, name: v.name }
+      return pre
+    }, {} as CategoriesIndex)
+    return state
+  },
   applyFSP (state: CashbookState, type: TriggerType = 'filters') {
-    const { bill, filters, sorter, getCache } = state
+    const { bill, filters, filterConfig, sorter, getCache } = state
+
+    const filterSetCache = { id: {}, time: {}, type: {}, category: {}, amount: {} } as {
+      [col in BillColumns]: {
+        [key: string]: boolean
+      }
+    }
+
+    const nextFilterSet: FilterSet = { ...initalState.filterSet }
+    Object.keys(nextFilterSet).forEach(key => {
+      nextFilterSet[key as BillColumns] = []
+    })
 
     let result = bill.filter(item => {
-      for (const key in filters) {
-        const el = filters[key as BillColumns]
-        if (typeof el === 'undefined') continue
-        if (item[key as BillColumns] !== el) return false
+      for (const fkey in filterConfig) {
+        const key = fkey as BillColumns
+        if (filterConfig[key]?.active) {
+          const result = filterConfig[key]?.transform(item[key] as never)
+          if (result) {
+            if (filterSetCache[key][result]) {
+              continue
+            } else {
+              nextFilterSet[key].push(result as never)
+              filterSetCache[key][result] = true
+            }
+          }
+        }
       }
 
-      return true
+      let flag = true
+      for (const fkey in filters) {
+        const key = fkey as BillColumns
+        const el = filters[key]
+        if (typeof el === 'undefined' || !el) continue
+        flag = flag && (filterConfig[key] ? filterConfig[key]?.transform(item[key] as never) : item[key]) === el
+      }
+
+      return flag
     })
 
     if (sorter) {
@@ -208,8 +296,18 @@ const utils = {
       })
     }
 
-    state.result = result
+    state.filterSet = nextFilterSet
 
+    // pageination
+    state.pagination = { ...state.pagination, total: result.length }
+    let pageStart = state.pagination.perPage * (state.pagination.current)
+    if (pageStart >= result.length) {
+      state.pagination.current = 0
+      pageStart = 0
+    }
+    result = result.slice(pageStart, pageStart + state.pagination.perPage)
+
+    state.result = result
     return state
   }
 }
@@ -217,7 +315,7 @@ const utils = {
 function reducer (state: CashbookState, action: CashbookAction<Payload>): CashbookState {
   switch (action.type) {
     case t.init: {
-      return action.payload as PayloadTypes.State
+      return utils.applyFSP(utils.createCategoriesIndex(action.payload as PayloadTypes.State))
     }
 
     case t.import: {
@@ -225,12 +323,11 @@ function reducer (state: CashbookState, action: CashbookAction<Payload>): Cashbo
       switch (p.importType) {
         case 'bill': return utils.applyFSP(utils.concatTable<Bill>(state, 'bill', p.data as BillTable))
         case 'categories': {
-          const nextState = utils.concatTable<Categories>(state, 'categories', p.data as CategoriesTable)
-          nextState.categoriesIndex = nextState.categories.reduce((pre, v) => {
-            pre[v.id] = { type: v.type, name: v.name }
-            return pre
-          }, {} as CategoriesIndex)
-          return nextState
+          return (
+            utils.createCategoriesIndex(
+              utils.concatTable<Categories>(state, 'categories', p.data as CategoriesTable)
+            )
+          )
         }
         default: return state
       }
@@ -285,6 +382,13 @@ function reducer (state: CashbookState, action: CashbookAction<Payload>): Cashbo
       return utils.applyFSP(nextState, 'sorter')
     }
 
+    case t.setPagination: {
+      const nextState = { ...state }
+      const p = action.payload as PayloadTypes.Pagination
+      nextState.pagination = { ...nextState.pagination, current: p.current }
+      return utils.applyFSP(nextState, 'pagination')
+    }
+
     default:
       return state
   }
@@ -315,6 +419,9 @@ function createActions (dispatch: React.Dispatch<CashbookAction<Payload>>) {
     },
     removeSorter () {
       dispatch({ type: t.removeSorter, payload: null })
+    },
+    setPagination (current: number) {
+      dispatch({ type: t.setPagination, payload: { current } })
     }
   }
 }
@@ -337,7 +444,7 @@ function useCashbook () {
 
   useEffect(() => {
     const data = cashbook.load()
-    actions.init({ ...data, result: [], filters: {}, categoriesIndex: {} })
+    actions.init({ ...iState, ...data })
   }, [])
 
   return { actions, state, io: cashbook }

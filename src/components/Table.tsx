@@ -22,9 +22,11 @@ export default function Table<T, P> (props: Props<T, P>) {
       </thead>
 
       <tbody>
-        {dataSource?.map((item, key) => (
-          <tr key={key}>
-            {
+        {
+        dataSource?.length
+          ? dataSource.map((item, key) => (
+            <tr key={key}>
+              {
               columns?.map(col => {
                 if (!col.dataIndex && !col.render) return false
                 if (!col.dataIndex && col.render) return <td key={col.key}>{col.render(null, item, props.columnsExtraData)}</td>
@@ -33,9 +35,11 @@ export default function Table<T, P> (props: Props<T, P>) {
                   <td key={col.key}>{col.render ? col.render(currentValue, item, props.columnsExtraData) : currentValue}</td>
                 )
               })
-            }
-          </tr>
-        ))}
+              }
+            </tr>
+          ))
+          : <tr><td colSpan={5} className='text-center'>暂无数据显示</td></tr>
+        }
       </tbody>
 
       {/*

@@ -3,9 +3,9 @@ import React, { useState, useEffect, useRef, PropsWithChildren, ReactElement, CS
 interface DropdownProps {
   menu: {
     text: string
-    key: string
+    value: string
   }[]
-  onClick?(): void
+  onClick?(v: DropdownProps['menu'][0]): void
   className?: string
   style?: CSSProperties
 }
@@ -55,10 +55,10 @@ export default function Dropdown (props: PropsWithChildren<DropdownProps>) {
         {props.menu.map(item => (
           <div
             className='dropdown-item'
-            key={item.key}
+            key={item.value}
             onClick={() => {
               setVisible(!visible)
-              if (props.onClick) props.onClick()
+              if (props.onClick) props.onClick(item)
             }}
           >
             {item.text}
