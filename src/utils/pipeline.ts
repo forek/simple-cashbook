@@ -61,6 +61,7 @@ const applyFilter: PipelineFunc = (state, lastResult) => {
   return { type: 'filter', state, result }
 }
 
+/*
 const applySorter: PipelineFunc = (state, lastResult) => {
   const { sorter } = state
   if (!sorter) return { type: 'sorter', state, result: state.result }
@@ -77,6 +78,7 @@ const applySorter: PipelineFunc = (state, lastResult) => {
 
   return { type: 'sorter', state, result }
 }
+*/
 
 const applyPagination: PipelineFunc = (state, lastResult) => {
   state.pagination = { ...state.pagination, total: lastResult.length }
@@ -90,8 +92,43 @@ const applyPagination: PipelineFunc = (state, lastResult) => {
   return { type: 'pagination', state, result }
 }
 
-const applyStatistics: PipelineFunc = (state, lastResult) => {
-  return { type: 'statistics', state: state, result: lastResult }
+const applyStatistics: PipelineFunc = (state, lastResult, stageResult) => {
+  const filterResult = stageResult.find(item => item.type === 'filter')
+
+  if (!filterResult || filterResult.result.length === state.bill.length) {
+    state.statistics = {
+      show: false,
+      revenue: [0, 0],
+      expenditure: []
+    }
+
+    return { type: 'statistics', state: state, result: lastResult }
+  }
+
+  const revenue = [0, 0] as [number, number]
+  const tmp = {} as { [key: string]: number }
+
+  filterResult.result.forEach(item => {
+    revenue[item.type] += item.amount
+    if (item.type === 0) {
+      tmp[item.category] = (typeof tmp[item.category] === 'number' ? tmp[item.category] : 0) + item.amount
+    }
+  })
+
+  const arr = [] as CashbookState['statistics']['expenditure']
+  for (const key in tmp) {
+    const amount = tmp[key]
+    arr.push({ category: key, amount: amount })
+  }
+  arr.sort((a, b) => a.amount - b.amount)
+
+  state.statistics = {
+    show: true,
+    expenditure: arr,
+    revenue: revenue
+  }
+
+  return { type: 'statistics', state, result: lastResult }
 }
 
 function getStageResult (type: StageType): PipelineFunc {
@@ -103,10 +140,10 @@ function getStageResult (type: StageType): PipelineFunc {
 }
 
 const pipelineConfig: PipelineConfig = {
-  filter: [applyFilter, applySorter, applyPagination, applyStatistics],
-  sorter: [getStageResult('filter'), applySorter, applyPagination, applyStatistics],
-  pagination: [getStageResult('sorter'), applyPagination, applyStatistics],
-  statistics: [getStageResult('pagination'), applyStatistics]
+  filter: [applyFilter, applyPagination, applyStatistics],
+  sorter: [getStageResult('filter'), applyPagination, applyStatistics],
+  pagination: [getStageResult('filter'), applyPagination, applyStatistics],
+  statistics: [getStageResult('filter'), getStageResult('pagination'), applyStatistics]
 }
 
 export default function CashbookPipeline (state: CashbookState, startPoint: StageType = 'filter'): CashbookState {

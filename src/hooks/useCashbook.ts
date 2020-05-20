@@ -115,6 +115,11 @@ export interface CashbookState {
     pagination: BillTable
     statistics: BillTable
   }
+  statistics: {
+    show: boolean
+    revenue: [number, number],
+    expenditure: { category: string, amount: number }[]
+  }
 }
 
 interface CashbookAction<T> {
@@ -175,6 +180,11 @@ export const initalState: CashbookState = {
     sorter: [],
     pagination: [],
     statistics: []
+  },
+  statistics: {
+    show: false,
+    revenue: [0, 0],
+    expenditure: []
   }
 }
 

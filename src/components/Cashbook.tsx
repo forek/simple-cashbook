@@ -1,6 +1,6 @@
 import React, { useContext, useState } from 'react'
 import ReactPaginate from 'react-paginate'
-import { CashbookContext, Bill, BillTable, CategoriesTable, CategoriesIndex } from '../hooks/useCashbook'
+import { CashbookContext, Bill, BillTable, CategoriesTable, CategoriesIndex, CashbookState } from '../hooks/useCashbook'
 import { ToastContext } from './Toast'
 import ImportButton from './ImportButton'
 import AdditionModal from './AdditionModal'
@@ -31,7 +31,7 @@ const billColumns = [
     title: '分类',
     dataIndex: 'category' as keyof Bill,
     key: 'category',
-    render: (value: Bill['category'], _: Bill, extraData: ColExDataType) => {
+    render: (value: Bill['category'], _: Bill, extraData: MainTableExDataType) => {
       const { categoriesIndex } = extraData
       if (!categoriesIndex) return value
       return categoriesIndex[value]?.name || '未知分类'
@@ -45,7 +45,7 @@ const billColumns = [
   {
     title: '操作',
     key: 'op',
-    render: (v: null, record: Bill, extraData: ColExDataType) => {
+    render: (v: null, record: Bill, extraData: MainTableExDataType) => {
       return (
         <button
           type='button'
@@ -62,9 +62,33 @@ const billColumns = [
   }
 ]
 
-interface ColExDataType {
+type Expenditure = CashbookState['statistics']['expenditure'][0]
+
+const statisticsColumns = [
+  {
+    title: '分类',
+    key: 'category',
+    dataIndex: 'category' as keyof Expenditure,
+    render: (value: Expenditure['category'], _: Expenditure, extraData: StatisticsTableExDataType) => {
+      const { categoriesIndex } = extraData
+      if (!categoriesIndex) return value
+      return categoriesIndex[value]?.name || '未知分类'
+    }
+  },
+  {
+    title: '金额',
+    key: 'amount',
+    dataIndex: 'amount' as keyof Expenditure
+  }
+]
+
+interface MainTableExDataType {
   categoriesIndex?: CategoriesIndex
   onDeleteBill(r: Bill): void
+}
+
+interface StatisticsTableExDataType {
+  categoriesIndex?: CategoriesIndex
 }
 
 const emptyFilter = [{ text: '无', value: '' }]
@@ -74,12 +98,18 @@ export default function Cashbook () {
   const { toast } = useContext(ToastContext)
   const [visible, setVisible] = useState(false)
 
-  const colExData: ColExDataType = {
+  const mainExData: MainTableExDataType = {
     categoriesIndex: state?.categoriesIndex,
     onDeleteBill: record => {
       actions?.remove(record)
     }
   }
+
+  const statExData: StatisticsTableExDataType = {
+    categoriesIndex: state?.categoriesIndex
+  }
+
+  const showStatistics = state?.filters.time && state?.statistics.show
 
   return (
     <div className='px-3'>
@@ -171,23 +201,33 @@ export default function Cashbook () {
         </div>
       </div>
       <div className='bg-white px-2'>
-        <Table<Bill, ColExDataType>
+        <Table<Bill, MainTableExDataType>
           columns={billColumns}
           dataSource={state?.result}
-          columnsExtraData={colExData}
+          columnsExtraData={mainExData}
         />
       </div>
       <div className='bg-white p-4 text-right'>
         <div id='react-paginate'>
+          {
+            showStatistics && state &&
+              <div className='d-inline-block float-left mt-2'>
+                {state.filters.time} 月度收支统计 - 收入：
+                <span className='text-primary'>￥{state.statistics.revenue[1]}</span> ；支出：
+                <span className='text-primary'> ￥{state.statistics.revenue[0]}</span>
+              </div>
+          }
           {
             state &&
               <ReactPaginate
                 pageCount={Math.ceil(state.pagination.total / state.pagination.perPage)}
                 breakLabel='...'
                 forcePage={state.pagination.current}
-                pageRangeDisplayed={8}
+                pageRangeDisplayed={5}
                 marginPagesDisplayed={2}
                 containerClassName='pagination m-0'
+                breakClassName='page-item'
+                breakLinkClassName='page-link'
                 pageClassName='page-item'
                 pageLinkClassName='page-link'
                 previousClassName='page-item'
@@ -204,6 +244,17 @@ export default function Cashbook () {
           }
         </div>
       </div>
+      {
+        showStatistics && state &&
+          <div className='bg-white mt-3 px-2'>
+            <h2 className='fs-16 m-0 px-2 pt-3'>{state.filters.time} 月度分类支出统计：</h2>
+            <Table<Expenditure, StatisticsTableExDataType>
+              columns={statisticsColumns}
+              dataSource={state.statistics.expenditure}
+              columnsExtraData={statExData}
+            />
+          </div>
+      }
     </div>
   )
 }

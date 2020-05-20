@@ -19,3 +19,7 @@
 .App table td {
   vertical-align: middle;
 }
+
+.App .fs-16 {
+  font-size: 16px;
+}
