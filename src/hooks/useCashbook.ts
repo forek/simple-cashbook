@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef, createContext } from 'react'
 import csvParse from 'csv-parse'
 import { v4 as uuidv4 } from 'uuid'
 import moment from 'moment'
+import applyCashbookPipeline from '../utils/pipeline'
 
 // import Decimal from 'decimal.js'
 
@@ -72,7 +73,7 @@ interface Pagination {
   total: number
 }
 
-type FilterSet = {
+export type FilterSet = {
   [col in BillColumns]: Bill[col][]
 }
 
@@ -91,13 +92,13 @@ interface Sorter {
 
 type SorterState = Sorter
 
-type BillColumns = keyof Bill
+export type BillColumns = keyof Bill
 
 export interface BillTable extends Array<Bill> {}
 
 export interface CategoriesTable extends Array<Categories> {}
 
-interface CashbookState {
+export interface CashbookState {
   bill: BillTable
   categories: CategoriesTable
   categoriesIndex: CategoriesIndex
@@ -108,6 +109,12 @@ interface CashbookState {
   pagination: Pagination
   sorter?: Sorter
   getCache?(): React.MutableRefObject<CashbookCache>
+  stageResult: {
+    filter: BillTable
+    sorter: BillTable
+    pagination: BillTable
+    statistics: BillTable
+  }
 }
 
 interface CashbookAction<T> {
@@ -122,8 +129,6 @@ interface CashbookCache {
 
 type DataType = 'bill' | 'categories'
 
-type TriggerType = 'filters' | 'sorter' | 'pagination'
-
 enum t {
   init = 'INIT',
   import = 'IMPORT',
@@ -135,7 +140,7 @@ enum t {
   setPagination = 'SET_PAGE'
 }
 
-const initalState: CashbookState = {
+export const initalState: CashbookState = {
   bill: [],
   categories: [],
   categoriesIndex: {},
@@ -164,6 +169,12 @@ const initalState: CashbookState = {
     current: 0,
     perPage: 10,
     total: 0
+  },
+  stageResult: {
+    filter: [],
+    sorter: [],
+    pagination: [],
+    statistics: []
   }
 }
 
@@ -241,87 +252,19 @@ const utils = {
       return pre
     }, {} as CategoriesIndex)
     return state
-  },
-  applyFSP (state: CashbookState, type: TriggerType = 'filters') {
-    const { bill, filters, filterConfig, sorter, getCache } = state
-
-    const filterSetCache = { id: {}, time: {}, type: {}, category: {}, amount: {} } as {
-      [col in BillColumns]: {
-        [key: string]: boolean
-      }
-    }
-
-    const nextFilterSet: FilterSet = { ...initalState.filterSet }
-    Object.keys(nextFilterSet).forEach(key => {
-      nextFilterSet[key as BillColumns] = []
-    })
-
-    let result = bill.filter(item => {
-      for (const fkey in filterConfig) {
-        const key = fkey as BillColumns
-        if (filterConfig[key]?.active) {
-          const result = filterConfig[key]?.transform(item[key] as never)
-          if (result) {
-            if (filterSetCache[key][result]) {
-              continue
-            } else {
-              nextFilterSet[key].push(result as never)
-              filterSetCache[key][result] = true
-            }
-          }
-        }
-      }
-
-      let flag = true
-      for (const fkey in filters) {
-        const key = fkey as BillColumns
-        const el = filters[key]
-        if (typeof el === 'undefined' || !el) continue
-        flag = flag && (filterConfig[key] ? filterConfig[key]?.transform(item[key] as never) : item[key]) === el
-      }
-
-      return flag
-    })
-
-    if (sorter) {
-      result = result.sort((a, b) => {
-        if (sorter.sortFn) {
-          return sorter.sortFn(a[sorter.col] as string, b[sorter.col] as string, sorter.direction)
-        }
-
-        switch (sorter.direction) {
-          case 'ascend': return a[sorter.col] as number - (b[sorter.col] as number)
-          case 'descend': return b[sorter.col] as number - (a[sorter.col] as number)
-        }
-      })
-    }
-
-    state.filterSet = nextFilterSet
-
-    // pageination
-    state.pagination = { ...state.pagination, total: result.length }
-    let pageStart = state.pagination.perPage * (state.pagination.current)
-    if (pageStart >= result.length) {
-      state.pagination.current = 0
-      pageStart = 0
-    }
-    result = result.slice(pageStart, pageStart + state.pagination.perPage)
-
-    state.result = result
-    return state
   }
 }
 
 function reducer (state: CashbookState, action: CashbookAction<Payload>): CashbookState {
   switch (action.type) {
     case t.init: {
-      return utils.applyFSP(utils.createCategoriesIndex(action.payload as PayloadTypes.State))
+      return applyCashbookPipeline(utils.createCategoriesIndex(action.payload as PayloadTypes.State))
     }
 
     case t.import: {
       const p = action.payload as PayloadTypes.Import
       switch (p.importType) {
-        case 'bill': return utils.applyFSP(utils.concatTable<Bill>(state, 'bill', p.data as BillTable))
+        case 'bill': return applyCashbookPipeline(utils.concatTable<Bill>(state, 'bill', p.data as BillTable))
         case 'categories': {
           return (
             utils.createCategoriesIndex(
@@ -336,7 +279,7 @@ function reducer (state: CashbookState, action: CashbookAction<Payload>): Cashbo
     case t.add: {
       const p = action.payload as PayloadTypes.Add
       switch (p.dataType) {
-        case 'bill': return utils.applyFSP(utils.concatTable<Bill>(state, 'bill', p.data as Bill))
+        case 'bill': return applyCashbookPipeline(utils.concatTable<Bill>(state, 'bill', p.data as Bill))
         case 'categories': return utils.concatTable<Categories>(state, 'categories', p.data as Categories)
         default: return state
       }
@@ -350,7 +293,7 @@ function reducer (state: CashbookState, action: CashbookAction<Payload>): Cashbo
         const nextState = { ...state }
         nextState.bill = [...nextState.bill]
         nextState.bill.splice(index, 1)
-        return utils.applyFSP(nextState)
+        return applyCashbookPipeline(nextState)
       } else {
         return state
       }
@@ -368,25 +311,25 @@ function reducer (state: CashbookState, action: CashbookAction<Payload>): Cashbo
         }
       }
 
-      return utils.applyFSP(nextState)
+      return applyCashbookPipeline(nextState)
     }
 
     case t.setSorter: {
       const nextState = { ...state, sorter: action.payload as PayloadTypes.Sorter }
-      return utils.applyFSP(nextState, 'sorter')
+      return applyCashbookPipeline(nextState, 'sorter')
     }
 
     case t.removeSorter: {
       const nextState = { ...state }
       delete nextState.sorter
-      return utils.applyFSP(nextState, 'sorter')
+      return applyCashbookPipeline(nextState, 'sorter')
     }
 
     case t.setPagination: {
       const nextState = { ...state }
       const p = action.payload as PayloadTypes.Pagination
       nextState.pagination = { ...nextState.pagination, current: p.current }
-      return utils.applyFSP(nextState, 'pagination')
+      return applyCashbookPipeline(nextState, 'pagination')
     }
 
     default:

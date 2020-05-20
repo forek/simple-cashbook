@@ -34,7 +34,7 @@ const billColumns = [
     render: (value: Bill['category'], _: Bill, extraData: ColExDataType) => {
       const { categoriesIndex } = extraData
       if (!categoriesIndex) return value
-      return categoriesIndex[value]?.name
+      return categoriesIndex[value]?.name || '未知分类'
     }
   },
   {
@@ -107,11 +107,7 @@ export default function Cashbook () {
           className='d-inline-block'
           menu={
             emptyFilter
-              .concat(state?.filterSet.category
-              .map(item => ({
-                text: state.categoriesIndex[item].name,
-                value: item
-              })) || [])
+              .concat(state?.categories.map(item => ({ text: item.name, value: item.id })) || [])
           }
           onClick={(v) => {
             if (v.value) {

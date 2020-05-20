@@ -83,11 +83,7 @@ export default function AdditionModal (props: Props) {
                   <Dropdown
                     className='d-inline-block input-group-text'
                     menu={
-                      state?.filterSet.category
-                        .map(item => ({
-                          text: state.categoriesIndex[item].name,
-                          value: item
-                        })) || []
+                      state?.categories.map(item => ({ text: item.name, value: item.id })) || []
                     }
                     onClick={(record) => {
                       setState('category', record.value)
