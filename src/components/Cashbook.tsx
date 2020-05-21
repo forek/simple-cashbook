@@ -203,7 +203,7 @@ export default function Cashbook () {
       <div className='bg-white px-2'>
         <Table<Bill, MainTableExDataType>
           columns={billColumns}
-          dataSource={state?.result}
+          dataSource={state?.display}
           columnsExtraData={mainExData}
         />
       </div>

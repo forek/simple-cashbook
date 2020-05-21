@@ -2,9 +2,7 @@ import { useEffect, useReducer, useRef, createContext } from 'react'
 import csvParse from 'csv-parse'
 import { v4 as uuidv4 } from 'uuid'
 import moment from 'moment'
-import applyCashbookPipeline from '../utils/pipeline'
-
-// import Decimal from 'decimal.js'
+import applyCashbookPipeline, { StageType, StageResult } from '../utils/pipeline'
 
 const LOCAL_STORAGE_BILL = 'simple_cashbook_bill_data'
 const LOCAL_STORAGE_CATEGORIES = 'simple_cashbook_categories_data'
@@ -102,7 +100,7 @@ export interface CashbookState {
   bill: BillTable
   categories: CategoriesTable
   categoriesIndex: CategoriesIndex
-  result: BillTable
+  display: BillTable
   filters: Filters
   filterSet: FilterSet
   filterConfig: FilterConfig
@@ -110,10 +108,10 @@ export interface CashbookState {
   sorter?: Sorter
   getCache?(): React.MutableRefObject<CashbookCache>
   stageResult: {
-    filter: BillTable
-    sorter: BillTable
-    pagination: BillTable
-    statistics: BillTable
+    [key in StageType]: {
+      state: StageResult['state']
+      result: StageResult['result']
+    }
   }
   statistics: {
     show: boolean
@@ -149,7 +147,7 @@ export const initalState: CashbookState = {
   bill: [],
   categories: [],
   categoriesIndex: {},
-  result: [],
+  display: [],
   filters: {},
   filterSet: {
     id: [],
@@ -176,10 +174,16 @@ export const initalState: CashbookState = {
     total: 0
   },
   stageResult: {
-    filter: [],
-    sorter: [],
-    pagination: [],
-    statistics: []
+    filter: { state: undefined, result: [] },
+    pagination: { state: undefined, result: [] },
+    statistics: {
+      state: undefined,
+      result: {
+        show: false,
+        revenue: [0, 0],
+        expenditure: []
+      }
+    }
   },
   statistics: {
     show: false,
@@ -324,17 +328,6 @@ function reducer (state: CashbookState, action: CashbookAction<Payload>): Cashbo
       return applyCashbookPipeline(nextState)
     }
 
-    case t.setSorter: {
-      const nextState = { ...state, sorter: action.payload as PayloadTypes.Sorter }
-      return applyCashbookPipeline(nextState, 'sorter')
-    }
-
-    case t.removeSorter: {
-      const nextState = { ...state }
-      delete nextState.sorter
-      return applyCashbookPipeline(nextState, 'sorter')
-    }
-
     case t.setPagination: {
       const nextState = { ...state }
       const p = action.payload as PayloadTypes.Pagination
@@ -365,14 +358,8 @@ function createActions (dispatch: React.Dispatch<CashbookAction<Payload>>) {
     setFilter<T extends BillColumns> (col: T, value: Bill[T]) {
       dispatch({ type: t.setFilter, payload: { col, value } })
     },
-    setSorter (col: BillColumns, direction: SortDirection, sortFn?: Sorter['sortFn']) {
-      dispatch({ type: t.setSorter, payload: { col, direction, sortFn } })
-    },
     removeFilter (col: BillColumns) {
       dispatch({ type: t.setFilter, payload: { col, value: undefined } })
-    },
-    removeSorter () {
-      dispatch({ type: t.removeSorter, payload: null })
     },
     setPagination (current: number) {
       dispatch({ type: t.setPagination, payload: { current } })

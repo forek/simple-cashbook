@@ -1,22 +1,34 @@
+/* eslint-disable no-undef */
 import { initalState, CashbookState, BillColumns, FilterSet, BillTable } from '../hooks/useCashbook'
+import Decimal from 'decimal.js'
 
-type StageType = 'filter' | 'sorter' | 'pagination' | 'statistics'
+export type StageType = 'filter' | 'pagination' | 'statistics'
 
-interface StageResult {
+type FilterResult = {
+  [key in BillColumns]?: BillTable
+}
+
+export interface StageResult {
   type?: StageType
-  state: CashbookState
-  result: BillTable
+  state?: Partial<CashbookState>
+  result: BillTable | FilterResult | CashbookState['statistics']
+}
+
+interface PipelineUpdateFunc {
+  (state: Partial<CashbookState>): void
 }
 
 interface PipelineFunc {
-  (state: CashbookState, lastResult: BillTable, stageResult: StageResult[]): StageResult
+  (state: CashbookState, update: PipelineUpdateFunc, stageResult: StageResult[]): StageResult
 }
 
 type PipelineConfig = {
   [key in StageType]: PipelineFunc[]
 }
 
-const applyFilter: PipelineFunc = (state, lastResult) => {
+const filterOrder: Array<BillColumns> = ['time', 'category', 'type']
+
+const applyFilter: PipelineFunc = (state, update) => {
   const { filters, filterConfig } = state
 
   const filterSetCache = { id: {}, time: {}, type: {}, category: {}, amount: {} } as {
@@ -30,85 +42,75 @@ const applyFilter: PipelineFunc = (state, lastResult) => {
     nextFilterSet[key as BillColumns] = []
   })
 
-  const result = lastResult.filter(item => {
+  state.bill.forEach(item => {
     for (const fkey in filterConfig) {
       const key = fkey as BillColumns
-      if (filterConfig[key]?.active) {
-        const result = filterConfig[key]?.transform(item[key] as never)
-        if (result) {
-          if (filterSetCache[key][result]) {
-            continue
-          } else {
-            nextFilterSet[key].push(result as never)
-            filterSetCache[key][result] = true
-          }
-        }
-      }
-    }
+      if (!filterConfig[key]?.active) continue
 
-    let flag = true
-    for (const fkey in filters) {
-      const key = fkey as BillColumns
-      const el = filters[key]
-      if (typeof el === 'undefined' || !el) continue
-      flag = flag && (filterConfig[key] ? filterConfig[key]?.transform(item[key] as never) : item[key]) === el
-    }
+      const result = filterConfig[key]?.transform(item[key] as never)
 
-    return flag
-  })
+      if (!result || filterSetCache[key][result]) continue
 
-  state.filterSet = nextFilterSet
-  return { type: 'filter', state, result }
-}
-
-/*
-const applySorter: PipelineFunc = (state, lastResult) => {
-  const { sorter } = state
-  if (!sorter) return { type: 'sorter', state, result: state.result }
-  const result = lastResult.sort((a, b) => {
-    if (sorter.sortFn) {
-      return sorter.sortFn(a[sorter.col] as string, b[sorter.col] as string, sorter.direction)
-    }
-
-    switch (sorter.direction) {
-      case 'ascend': return a[sorter.col] as number - (b[sorter.col] as number)
-      case 'descend': return b[sorter.col] as number - (a[sorter.col] as number)
+      nextFilterSet[key].push(result as never)
+      filterSetCache[key][result] = true
     }
   })
 
-  return { type: 'sorter', state, result }
-}
-*/
+  const result: FilterResult = {}
 
-const applyPagination: PipelineFunc = (state, lastResult) => {
-  state.pagination = { ...state.pagination, total: lastResult.length }
-  let pageStart = state.pagination.perPage * (state.pagination.current)
-  if (pageStart >= lastResult.length) {
-    state.pagination.current = 0
+  const billTable = filterOrder.filter(f => f in filters && typeof filters[f] !== 'undefined').reduce((pre, v) => {
+    const el = filters[v] as string
+    const list = pre.filter(item => {
+      return (filterConfig[v] ? filterConfig[v]?.transform(item[v] as never) : item[v]) === el
+    })
+
+    result[v] = list
+
+    return list
+  }, state.bill)
+
+  update({ display: billTable, filterSet: nextFilterSet })
+
+  return { type: 'filter', result: result }
+}
+
+const applyPagination: PipelineFunc = (state, update) => {
+  const lastDisplay = state.display
+  const pagination = { ...state.pagination, total: lastDisplay.length }
+
+  let pageStart = pagination.perPage * (pagination.current)
+  if (pageStart >= lastDisplay.length) {
+    pagination.current = 0
     pageStart = 0
   }
-  const result = lastResult.slice(pageStart, pageStart + state.pagination.perPage)
 
-  return { type: 'pagination', state, result }
+  const result = lastDisplay.slice(pageStart, pageStart + pagination.perPage)
+
+  update({ pagination, display: result })
+
+  return { type: 'pagination', result }
 }
 
-const applyStatistics: PipelineFunc = (state, lastResult, stageResult) => {
-  const filterResult = stageResult.find(item => item.type === 'filter')
+const applyStatistics: PipelineFunc = (state, update, stageResult) => {
+  const filterResult = stageResult.find(item => item.type === 'filter') as StageResult | null
+  const stage = filterResult?.result as FilterResult | undefined
 
-  if (!filterResult || filterResult.result.length === state.bill.length) {
-    state.statistics = {
+  if (!stage || !stage.time) {
+    const result = {
       show: false,
-      revenue: [0, 0],
+      revenue: [0, 0] as [number, number],
       expenditure: []
     }
 
-    return { type: 'statistics', state: state, result: lastResult }
+    update({ statistics: result })
+
+    return { type: 'statistics', result }
   }
 
   const revenue = [0, 0] as [number, number]
   const tmp = {} as { [key: string]: number }
 
-  filterResult.result.forEach(item => {
+  stage.time.forEach(item => {
     revenue[item.type] += item.amount
     if (item.type === 0) {
       tmp[item.category] = (typeof tmp[item.category] === 'number' ? tmp[item.category] : 0) + item.amount
@@ -122,18 +124,22 @@ const applyStatistics: PipelineFunc = (state, lastResult, stageResult) => {
   }
   arr.sort((a, b) => a.amount - b.amount)
 
-  state.statistics = {
+  const statistics = {
     show: true,
     expenditure: arr,
     revenue: revenue
   }
 
-  return { type: 'statistics', state, result: lastResult }
+  update({ statistics })
+
+  return { type: 'statistics', state, result: statistics }
 }
 
-function getStageResult (type: StageType): PipelineFunc {
-  const fn: PipelineFunc = (state) => {
-    return { type, state, result: state.stageResult[type] }
+function skipStage (type: StageType): PipelineFunc {
+  const fn: PipelineFunc = (state, update) => {
+    const obj = state.stageResult[type]
+    update(obj.state as Partial<CashbookState>)
+    return { type, result: obj.result }
   }
 
   return fn
@@ -141,26 +147,32 @@ function getStageResult (type: StageType): PipelineFunc {
 
 const pipelineConfig: PipelineConfig = {
   filter: [applyFilter, applyPagination, applyStatistics],
-  sorter: [getStageResult('filter'), applyPagination, applyStatistics],
-  pagination: [getStageResult('filter'), applyPagination, applyStatistics],
-  statistics: [getStageResult('filter'), getStageResult('pagination'), applyStatistics]
+  pagination: [skipStage('filter'), applyPagination, applyStatistics],
+  statistics: [skipStage('filter'), skipStage('pagination'), applyStatistics]
 }
 
 export default function CashbookPipeline (state: CashbookState, startPoint: StageType = 'filter'): CashbookState {
   const config = pipelineConfig[startPoint]
 
   const { state: nextState, stageResult } = config.reduce((pre, fn) => {
-    const lastResult = pre.stageResult.length > 0 ? pre.stageResult[pre.stageResult.length - 1].result : state.bill
+    const cacheState: Partial<CashbookState> = {}
 
-    const r = fn(state, lastResult, pre.stageResult)
-    r.state.result = r.result
+    const update: PipelineUpdateFunc = (state) => {
+      Object.assign(cacheState, state)
+    }
 
-    return { state: r.state, stageResult: pre.stageResult.concat(r) }
+    const r = fn(state, update, pre.stageResult)
+
+    Object.assign(state, cacheState)
+
+    r.state = cacheState
+
+    return { state, stageResult: pre.stageResult.concat(r) }
   }, { state, stageResult: [] as StageResult[] })
 
   stageResult.forEach(item => {
     if (!item.type) return
-    nextState.stageResult[item.type] = item.result
+    nextState.stageResult[item.type] = { result: item.result, state: item.state }
   })
 
   return nextState
