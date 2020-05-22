@@ -3,6 +3,7 @@ import csvParse from 'csv-parse'
 import { v4 as uuidv4 } from 'uuid'
 import moment from 'moment'
 import applyCashbookPipeline, { StageType, StageResult } from '../utils/pipeline'
+import cache from '../utils/cache'
 
 const LOCAL_STORAGE_BILL = 'simple_cashbook_bill_data'
 const LOCAL_STORAGE_CATEGORIES = 'simple_cashbook_categories_data'
@@ -72,13 +73,13 @@ interface Pagination {
 }
 
 export type FilterSet = {
-  [col in BillColumns]: Bill[col][]
+  [col in BillColumns]: { value: Bill[col], count: number }[]
 }
 
 type FilterConfig = {
   [col in BillColumns]?: {
     active: boolean
-    transform(v: Bill[col]): string
+    transform?(v: Bill[col]): string
   }
 }
 
@@ -115,8 +116,8 @@ export interface CashbookState {
   }
   statistics: {
     show: boolean
-    revenue: [number, number],
-    expenditure: { category: string, amount: number }[]
+    revenue: [string, string],
+    expenditure: { category: string, amount: string }[]
   }
 }
 
@@ -160,12 +161,12 @@ export const initalState: CashbookState = {
     time: {
       active: true,
       transform: v => {
-        return moment(parseInt(v)).format('YYYY-MM')
+        if (!(v in cache.transformTime)) cache.transformTime[v] = moment(parseInt(v)).format('YYYY-MM')
+        return cache.transformTime[v]
       }
     },
     category: {
-      active: true,
-      transform: v => v
+      active: true
     }
   },
   pagination: {
@@ -174,20 +175,21 @@ export const initalState: CashbookState = {
     total: 0
   },
   stageResult: {
+    initFilter: { state: undefined, result: {} },
     filter: { state: undefined, result: [] },
     pagination: { state: undefined, result: [] },
     statistics: {
       state: undefined,
       result: {
         show: false,
-        revenue: [0, 0],
+        revenue: ['0', '0'],
         expenditure: []
       }
     }
   },
   statistics: {
     show: false,
-    revenue: [0, 0],
+    revenue: ['0', '0'],
     expenditure: []
   }
 }
@@ -272,13 +274,31 @@ const utils = {
 function reducer (state: CashbookState, action: CashbookAction<Payload>): CashbookState {
   switch (action.type) {
     case t.init: {
-      return applyCashbookPipeline(utils.createCategoriesIndex(action.payload as PayloadTypes.State))
+      return applyCashbookPipeline(
+        utils.createCategoriesIndex(action.payload as PayloadTypes.State),
+        'initFilter',
+        {
+          initFilter: {
+            type: 'add',
+            data: (action.payload as PayloadTypes.State).bill
+          }
+        }
+      )
     }
 
     case t.import: {
       const p = action.payload as PayloadTypes.Import
       switch (p.importType) {
-        case 'bill': return applyCashbookPipeline(utils.concatTable<Bill>(state, 'bill', p.data as BillTable))
+        case 'bill': return applyCashbookPipeline(
+          utils.concatTable<Bill>(state, 'bill', p.data as BillTable),
+          'initFilter',
+          {
+            initFilter: {
+              type: 'add',
+              data: p.data as BillTable
+            }
+          }
+        )
         case 'categories': {
           return (
             utils.createCategoriesIndex(
@@ -293,7 +313,18 @@ function reducer (state: CashbookState, action: CashbookAction<Payload>): Cashbo
     case t.add: {
       const p = action.payload as PayloadTypes.Add
       switch (p.dataType) {
-        case 'bill': return applyCashbookPipeline(utils.concatTable<Bill>(state, 'bill', p.data as Bill))
+        case 'bill': {
+          return applyCashbookPipeline(
+            utils.concatTable<Bill>(state, 'bill', p.data as Bill),
+            'initFilter',
+            {
+              initFilter: {
+                type: 'add',
+                data: [p.data as Bill]
+              }
+            }
+          )
+        }
         case 'categories': return utils.concatTable<Categories>(state, 'categories', p.data as Categories)
         default: return state
       }
@@ -306,8 +337,17 @@ function reducer (state: CashbookState, action: CashbookAction<Payload>): Cashbo
       if (index >= 0) {
         const nextState = { ...state }
         nextState.bill = [...nextState.bill]
-        nextState.bill.splice(index, 1)
-        return applyCashbookPipeline(nextState)
+        const deleted = nextState.bill.splice(index, 1)
+        return applyCashbookPipeline(
+          nextState,
+          'initFilter',
+          {
+            initFilter: {
+              type: 'remove',
+              data: deleted
+            }
+          }
+        )
       } else {
         return state
       }
@@ -325,14 +365,14 @@ function reducer (state: CashbookState, action: CashbookAction<Payload>): Cashbo
         }
       }
 
-      return applyCashbookPipeline(nextState)
+      return applyCashbookPipeline(nextState, 'filter', undefined)
     }
 
     case t.setPagination: {
       const nextState = { ...state }
       const p = action.payload as PayloadTypes.Pagination
       nextState.pagination = { ...nextState.pagination, current: p.current }
-      return applyCashbookPipeline(nextState, 'pagination')
+      return applyCashbookPipeline(nextState, 'pagination', undefined)
     }
 
     default:

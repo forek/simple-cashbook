@@ -1,4 +1,4 @@
-import React, { useContext, useState } from 'react'
+import React, { useContext, useState, useEffect } from 'react'
 import ReactPaginate from 'react-paginate'
 import { CashbookContext, Bill, BillTable, CategoriesTable, CategoriesIndex, CashbookState } from '../hooks/useCashbook'
 import { ToastContext } from './Toast'
@@ -52,6 +52,7 @@ const billColumns = [
           className='btn btn-danger d-inline-block btn-sm'
           onClick={() => {
             const { onDeleteBill } = extraData
+            console.log(record)
             onDeleteBill(record)
           }}
         >
@@ -97,7 +98,9 @@ export default function Cashbook () {
   const { state, actions, io } = useContext(CashbookContext)
   const { toast } = useContext(ToastContext)
   const [visible, setVisible] = useState(false)
-
+  useEffect(() => {
+    Object.assign(window, { CashbookContext: { double: () => { state && actions?.import('bill', [...state.bill]) } } })
+  }, [state, actions])
   const mainExData: MainTableExDataType = {
     categoriesIndex: state?.categoriesIndex,
     onDeleteBill: record => {
@@ -121,7 +124,7 @@ export default function Cashbook () {
         <Dropdown
           className='d-inline-block'
           menu={
-            emptyFilter.concat(state?.filterSet.time.map(item => ({ text: item, value: item })) || [])
+            emptyFilter.concat(state?.filterSet.time.map(item => ({ text: item.value, value: item.value })) || [])
           }
           onClick={(v) => {
             if (v.value) {

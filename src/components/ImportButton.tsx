@@ -19,6 +19,7 @@ export default function ImportButton (props: PropsWithChildren<Props>) {
           if (event.target.files?.length) {
             const file = event.target.files[0]
             if (props.onImport) props.onImport(file)
+            event.target.value = ''
           }
         }}
       />
