@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, createContext } from 'react'
+import { useEffect, useReducer, createContext } from 'react'
 import csvParse from 'csv-parse'
 import { v4 as uuidv4 } from 'uuid'
 import moment from 'moment'
@@ -33,9 +33,13 @@ declare namespace PayloadTypes {
   export interface Pagination {
     current: number
   }
+
+  export interface Random {
+    count: number
+  }
 }
 
-type Payload = PayloadTypes.State | PayloadTypes.Import | PayloadTypes.Add | PayloadTypes.Filters | PayloadTypes.Sorter | PayloadTypes.Remove | PayloadTypes.Pagination | null
+type Payload = PayloadTypes.Random | PayloadTypes.State | PayloadTypes.Import | PayloadTypes.Add | PayloadTypes.Filters | PayloadTypes.Sorter | PayloadTypes.Remove | PayloadTypes.Pagination | null
 
 type CategoriesType = 0 | 1
 
@@ -141,7 +145,8 @@ enum t {
   setFilter = 'SET_FILTER',
   setSorter = 'SET_SORTER',
   removeSorter = 'REMOVE_SORTER',
-  setPagination = 'SET_PAGE'
+  setPagination = 'SET_PAGE',
+  random = 'CREATE_RANDOM_DATA'
 }
 
 export const initalState: CashbookState = {
@@ -202,14 +207,19 @@ const cashbook = {
     return { bill, categories }
   },
   import: (type: DataType, blob: Blob) => {
-    const parse = (str: string | null) => new Promise((resolve, reject) => {
+    const parse = (str: string | null, expectHeader: string) => new Promise((resolve, reject) => {
       if (!str) return resolve(null)
+      let tmpHeader = ''
       csvParse(str,
         {
-          columns: header => header
+          columns: header => {
+            tmpHeader = header.join(',')
+            return header
+          }
         },
         (err, records) => {
           if (err) return reject(err)
+          if (expectHeader !== tmpHeader) return reject(new Error('格式错误'))
           resolve(records)
         })
     })
@@ -219,27 +229,31 @@ const cashbook = {
       reader.readAsText(blob, 'UTF-8')
 
       reader.onload = async function (e) {
-        switch (type) {
-          case 'bill': {
-            const data = (await parse(e.target?.result as string | null)) as BillTable | null
-            if (!data) return resolve([])
-            data.forEach(item => {
-              item.amount = parseFloat(item.amount as unknown as string)
-              item.type = parseInt(item.type as unknown as string) as CategoriesType
-              item.id = uuidv4()
-            })
-            resolve(data)
-            break
+        try {
+          switch (type) {
+            case 'bill': {
+              const data = (await parse(e.target?.result as string | null, 'type,time,category,amount')) as BillTable | null
+              if (!data) return resolve([])
+              data.forEach(item => {
+                item.amount = parseFloat(item.amount as unknown as string)
+                item.type = parseInt(item.type as unknown as string) as CategoriesType
+                item.id = utils.getUniqueUUID()
+              })
+              resolve(data)
+              break
+            }
+            case 'categories': {
+              const data = (await parse(e.target?.result as string | null, 'id,type,name')) as CategoriesTable | null
+              if (!data) return resolve([])
+              data.forEach(item => {
+                item.type = parseInt(item.type as unknown as string) as CategoriesType
+              })
+              resolve(data)
+              break
+            }
           }
-          case 'categories': {
-            const data = (await parse(e.target?.result as string | null)) as CategoriesTable | null
-            if (!data) return resolve([])
-            data.forEach(item => {
-              item.type = parseInt(item.type as unknown as string) as CategoriesType
-            })
-            resolve(data)
-            break
-          }
+        } catch (error) {
+          reject(error)
         }
       }
 
@@ -252,6 +266,10 @@ const cashbook = {
   save: (bill: BillTable, categories: CategoriesTable) => {
     window.localStorage.setItem(LOCAL_STORAGE_BILL, JSON.stringify(bill))
     window.localStorage.setItem(LOCAL_STORAGE_CATEGORIES, JSON.stringify(categories))
+  },
+  clearAndSave: () => {
+    window.localStorage.clear()
+    window.location.reload()
   }
 }
 
@@ -268,6 +286,20 @@ const utils = {
       return pre
     }, {} as CategoriesIndex)
     return state
+  },
+  getUniqueUUID () {
+    let uuid = ''
+    do { uuid = uuidv4() } while (cache.billIds[uuid])
+    cache.billIds[uuid] = true
+    return uuid
+  },
+  buildIdsCache (data: BillTable) {
+    data.forEach(item => {
+      if (item.id) cache.billIds[item.id] = true
+    })
+  },
+  random (num: number) {
+    return Math.floor(Math.random() * num)
   }
 }
 
@@ -375,6 +407,33 @@ function reducer (state: CashbookState, action: CashbookAction<Payload>): Cashbo
       return applyCashbookPipeline(nextState, 'pagination', undefined)
     }
 
+    case t.random: {
+      const { count } = action.payload as PayloadTypes.Random
+      const { bill, categories } = state
+      const vBillTable: BillTable = []
+
+      for (let i = 0; i < count; i++) {
+        vBillTable.push({
+          id: utils.getUniqueUUID(),
+          type: utils.random(2) as 0 | 1,
+          category: categories[utils.random(categories.length)].id,
+          time: bill[utils.random(bill.length)].time,
+          amount: utils.random(30000)
+        })
+      }
+
+      return applyCashbookPipeline(
+        utils.concatTable<Bill>(state, 'bill', vBillTable),
+        'initFilter',
+        {
+          initFilter: {
+            type: 'add',
+            data: vBillTable
+          }
+        }
+      )
+    }
+
     default:
       return state
   }
@@ -383,13 +442,17 @@ function reducer (state: CashbookState, action: CashbookAction<Payload>): Cashbo
 function createActions (dispatch: React.Dispatch<CashbookAction<Payload>>) {
   return {
     init (state: CashbookState) {
+      utils.buildIdsCache(state.bill)
       dispatch({ type: t.init, payload: state })
     },
     import (type: DataType, data: BillTable | CategoriesTable) {
+      if (type === 'bill') utils.buildIdsCache(data as BillTable)
       dispatch({ type: t.import, payload: { importType: type, data } })
     },
     add (type: DataType, data: Bill | Categories) {
-      if (type === 'bill' && !data.id) data.id = uuidv4()
+      if (type === 'bill' && !data.id) {
+        data.id = utils.getUniqueUUID()
+      }
       dispatch({ type: t.add, payload: { dataType: type, data } })
     },
     remove (record: Bill) {
@@ -403,6 +466,9 @@ function createActions (dispatch: React.Dispatch<CashbookAction<Payload>>) {
     },
     setPagination (current: number) {
       dispatch({ type: t.setPagination, payload: { current } })
+    },
+    createRandomBillTable (count: number) {
+      dispatch({ type: t.random, payload: { count } })
     }
   }
 }
@@ -417,15 +483,17 @@ export const CashbookContext = createContext<CashbookContextType>({})
 
 function useCashbook () {
   const iState = { ...initalState }
-  iState.getCache = () => cache
 
-  const cache = useRef({} as CashbookCache)
   const [state, dispatch] = useReducer(reducer, iState)
   const actions = createActions(dispatch)
 
   useEffect(() => {
     const data = cashbook.load()
     actions.init({ ...iState, ...data })
+    cache.billIds = {}
+    return () => {
+      cache.billIds = {}
+    }
   }, [])
 
   return { actions, state, io: cashbook }

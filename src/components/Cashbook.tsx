@@ -1,12 +1,13 @@
-import React, { useContext, useState, useEffect } from 'react'
+import React, { useContext, useState } from 'react'
 import ReactPaginate from 'react-paginate'
+import moment from 'moment'
 import { CashbookContext, Bill, BillTable, CategoriesTable, CategoriesIndex, CashbookState } from '../hooks/useCashbook'
 import { ToastContext } from './Toast'
 import ImportButton from './ImportButton'
 import AdditionModal from './AdditionModal'
 import Dropdown from './Dropdown'
 import Table from './Table'
-import moment from 'moment'
+import saveFile from '../utils/saveFile'
 
 const billColumns = [
   {
@@ -52,7 +53,6 @@ const billColumns = [
           className='btn btn-danger d-inline-block btn-sm'
           onClick={() => {
             const { onDeleteBill } = extraData
-            console.log(record)
             onDeleteBill(record)
           }}
         >
@@ -98,9 +98,7 @@ export default function Cashbook () {
   const { state, actions, io } = useContext(CashbookContext)
   const { toast } = useContext(ToastContext)
   const [visible, setVisible] = useState(false)
-  useEffect(() => {
-    Object.assign(window, { CashbookContext: { double: () => { state && actions?.import('bill', [...state.bill]) } } })
-  }, [state, actions])
+
   const mainExData: MainTableExDataType = {
     categoriesIndex: state?.categoriesIndex,
     onDeleteBill: record => {
@@ -134,7 +132,7 @@ export default function Cashbook () {
             }
           }}
         >
-          <button className='mr-2 btn btn-primary'>月份筛选: {state?.filters.time || '无'}</button>
+          <button className='mr-2 btn btn-primary dropdown-toggle'>月份筛选: {state?.filters.time || '无'}</button>
         </Dropdown>
         <Dropdown
           className='d-inline-block'
@@ -150,13 +148,32 @@ export default function Cashbook () {
             }
           }}
         >
-          <button className='btn btn-primary'>分类筛选: {
+          <button className='btn btn-primary dropdown-toggle'>分类筛选: {
             state?.filters.category
               ? state.categoriesIndex[state?.filters.category].name
               : '无'
           }
           </button>
         </Dropdown>
+        {
+          !!(state?.categories.length && state.bill.length) &&
+          <Dropdown
+            className='d-inline-block'
+            menu={
+              [
+                { text: '随机添加一千条账单', value: '1000' },
+                { text: '随机添加一万条账单', value: '10000' },
+                { text: '随机添加十万条账单', value: '100000' }
+              ]
+            }
+            onClick={(v) => {
+                actions?.createRandomBillTable(parseInt(v.value))
+            }}
+          >
+            <button className='ml-2 btn btn-secondary dropdown-toggle'>性能测试</button>
+          </Dropdown>
+        }
+
         <div className='float-right'>
           <button
             type='button'
@@ -167,7 +184,8 @@ export default function Cashbook () {
                   io?.save(state?.bill, state?.categories)
                   toast('保存成功')
                 } catch (error) {
-                  toast(`保存失败: ${error.message}`)
+                  toast('保存失败，请使用“保存为文件”功能保存数据')
+                  console.error(error)
                 }
               }
             }}
@@ -176,31 +194,83 @@ export default function Cashbook () {
           </button>
           <button
             type='button'
+            className='btn btn-success ml-2'
+            onClick={() => {
+              if (state?.bill) {
+                saveFile(`账单表（${moment().format('YYYY-MM-DD HH:mm')}）.csv`, state.bill)
+              }
+            }}
+          >
+            保存为文件
+          </button>
+          <button
+            type='button'
             className='btn ml-2 btn-primary'
             onClick={() => {
+              if (!state?.categories.length) return toast('请先导入类型表')
               setVisible(!visible)
             }}
           >
             添加账单
           </button>
-          <ImportButton
-            className='btn btn-info ml-2'
-            onImport={async (file) => {
-              const result = (await io?.import('bill', file)) as BillTable
-              if (result) actions?.import('bill', result)
+          <button
+            type='button'
+            className='btn ml-2 btn-danger'
+            onClick={() => {
+              io?.clearAndSave()
             }}
           >
-            导入账单表
-          </ImportButton>
-          <ImportButton
-            className='btn btn-info ml-2'
-            onImport={async (file) => {
-              const result = (await io?.import('categories', file)) as CategoriesTable
-              if (result) actions?.import('categories', result)
-            }}
+            清空数据
+          </button>
+          <Dropdown
+            className='d-inline-block'
+            menu={
+              [
+                {
+                  text: '导入账单表',
+                  value: '0',
+                  render: (cb) => (
+                    <ImportButton
+                      className='btn btn-info ml-2'
+                      onImport={async (file) => {
+                        try {
+                          const result = (await io?.import('bill', file)) as BillTable
+                          if (result) actions?.import('bill', result)
+                          cb()
+                        } catch (error) {
+                          toast(`导入失败：${error.message}`)
+                        }
+                      }}
+                    >
+                      <div className='dropdown-item' >导入账单表</div>
+                    </ImportButton>
+                  )
+                },
+                {
+                  text: '导入类型表',
+                  value: '1',
+                  render: (cb) => (
+                    <ImportButton
+                      className='btn btn-info ml-2'
+                      onImport={async (file) => {
+                        try {
+                          const result = (await io?.import('categories', file)) as CategoriesTable
+                          if (result) actions?.import('categories', result)
+                          cb()
+                        } catch (error) {
+                          toast(`导入失败：${error.message}`)
+                        }
+                      }}
+                    >
+                      <div className='dropdown-item' >导入类型表</div>
+                    </ImportButton>
+                  )
+                }
+              ]
+            }
           >
-            导入类型表
-          </ImportButton>
+            <button className='btn btn-info ml-2 dropdown-toggle'>导入数据</button>
+          </Dropdown>
         </div>
       </div>
       <div className='bg-white px-2'>

@@ -44,7 +44,7 @@ export default function Toast (props: PropsWithChildren<Props>) {
       >
         {props.children}
       </ToastContext.Provider>
-      <div style={{ position: 'fixed', top: 20, right: 20 }}>
+      <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 1051 }}>
         {
           list.map((item) => (
             <div className='toast show' key={item.id}>

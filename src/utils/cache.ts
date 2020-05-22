@@ -8,7 +8,12 @@ interface DecimalCache {
   [key: string]: Decimal
 }
 
+interface BillIdsCache {
+  [key: string]: true
+}
+
 export default {
   transformTime: {} as Cache,
-  decimalSet: {} as DecimalCache
+  decimalSet: {} as DecimalCache,
+  billIds: {} as BillIdsCache
 }

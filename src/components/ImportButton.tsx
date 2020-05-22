@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-expressions */
-import React, { PropsWithChildren, useRef } from 'react'
+import React, { PropsWithChildren, useRef, ReactElement } from 'react'
 
 interface Props {
   className?: string,
@@ -9,7 +9,7 @@ interface Props {
 export default function ImportButton (props: PropsWithChildren<Props>) {
   const el = useRef<HTMLInputElement>(null)
   return (
-    <div className='d-inline-block'>
+    <>
       <input
         accept='text/csv'
         type='file'
@@ -23,15 +23,14 @@ export default function ImportButton (props: PropsWithChildren<Props>) {
           }
         }}
       />
-      <button
-        type='button'
-        className={props.className}
-        onClick={() => {
-          el.current?.click()
-        }}
-      >
-        {props.children}
-      </button>
-    </div>
+      {React.cloneElement(
+        props.children as ReactElement,
+        {
+          onClick: () => {
+            el.current?.click()
+          }
+        }
+      )}
+    </>
   )
 }

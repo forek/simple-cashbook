@@ -9,7 +9,8 @@ module.exports = {
     "semi": "off",
     "@typescript-eslint/semi": ['error', 'never'],
     'react/jsx-tag-spacing': 'off',
-    'no-unused-expressions': 'off'
+    'no-unused-expressions': 'off',
+    'react/jsx-indent': 'off'
   },
   parser: '@typescript-eslint/parser',
   plugins: [

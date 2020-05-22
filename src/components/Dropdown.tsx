@@ -4,6 +4,7 @@ interface DropdownProps {
   menu: {
     text: string
     value: string
+    render?(cb: () => void): JSX.Element
   }[]
   onClick?(v: DropdownProps['menu'][0]): void
   className?: string
@@ -31,18 +32,26 @@ export default function Dropdown (props: PropsWithChildren<DropdownProps>) {
         }
       })()}
       <div className='dropdown-menu overflow-auto' style={{ display: visible ? 'block' : 'none', maxHeight: 200 }}>
-        {props.menu.map(item => (
-          <div
-            className='dropdown-item'
-            key={item.value}
-            onClick={() => {
-              setVisible(!visible)
-              if (props.onClick) props.onClick(item)
-            }}
-          >
-            {item.text}
-          </div>
-        ))}
+        {props.menu.map(item => {
+          const callbackFn = () => {
+            setVisible(!visible)
+            if (props.onClick) props.onClick(item)
+          }
+
+          if (item.render) {
+            return <span key={item.value}>{item.render(callbackFn)}</span>
+          } else {
+            return (
+              <div
+                className='dropdown-item'
+                key={item.value}
+                onClick={callbackFn}
+              >
+                {item.text}
+              </div>
+            )
+          }
+        })}
       </div>
     </div>
   )
