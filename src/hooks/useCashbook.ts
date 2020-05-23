@@ -18,7 +18,7 @@ declare namespace PayloadTypes {
 
   export interface Add {
     dataType: DataType
-    data: Bill | Categories
+    data: Bill | Category
   }
 
   export type Remove = Bill
@@ -51,7 +51,7 @@ export interface Bill {
   amount: number
 }
 
-export interface Categories {
+export interface Category {
   id: string
   type: CategoriesType
   name: string
@@ -59,8 +59,8 @@ export interface Categories {
 
 export interface CategoriesIndex {
   [id: string]: {
-    type: Categories['type']
-    name: Categories['name']
+    type: Category['type']
+    name: Category['name']
   }
 }
 
@@ -99,7 +99,7 @@ export type BillColumns = keyof Bill
 
 export interface BillTable extends Array<Bill> {}
 
-export interface CategoriesTable extends Array<Categories> {}
+export interface CategoriesTable extends Array<Category> {}
 
 export interface CashbookState {
   bill: BillTable
@@ -200,7 +200,7 @@ export const initalState: CashbookState = {
 }
 
 // Cashbook I/O API
-const cashbook = {
+export const io = {
   load: () => {
     const bill: BillTable = JSON.parse(window.localStorage.getItem(LOCAL_STORAGE_BILL) || '[]')
     const categories: CategoriesTable = JSON.parse(window.localStorage.getItem(LOCAL_STORAGE_CATEGORIES) || '[]')
@@ -274,7 +274,7 @@ const cashbook = {
 }
 
 const utils = {
-  concatTable<T extends Bill | Categories> (state: CashbookState, key: DataType, data: T | T[]) {
+  concatTable<T extends Bill | Category> (state: CashbookState, key: DataType, data: T | T[]) {
     return {
       ...state,
       [key]: (state[key] as T[]).concat(data as T | T[])
@@ -303,7 +303,7 @@ const utils = {
   }
 }
 
-function reducer (state: CashbookState, action: CashbookAction<Payload>): CashbookState {
+export function reducer (state: CashbookState, action: CashbookAction<Payload>): CashbookState {
   switch (action.type) {
     case t.init: {
       return applyCashbookPipeline(
@@ -334,7 +334,7 @@ function reducer (state: CashbookState, action: CashbookAction<Payload>): Cashbo
         case 'categories': {
           return (
             utils.createCategoriesIndex(
-              utils.concatTable<Categories>(state, 'categories', p.data as CategoriesTable)
+              utils.concatTable<Category>(state, 'categories', p.data as CategoriesTable)
             )
           )
         }
@@ -357,7 +357,7 @@ function reducer (state: CashbookState, action: CashbookAction<Payload>): Cashbo
             }
           )
         }
-        case 'categories': return utils.concatTable<Categories>(state, 'categories', p.data as Categories)
+        case 'categories': return utils.concatTable<Category>(state, 'categories', p.data as Category)
         default: return state
       }
     }
@@ -439,7 +439,7 @@ function reducer (state: CashbookState, action: CashbookAction<Payload>): Cashbo
   }
 }
 
-function createActions (dispatch: React.Dispatch<CashbookAction<Payload>>) {
+export function createActions (dispatch: React.Dispatch<CashbookAction<Payload>>) {
   return {
     init (state: CashbookState) {
       utils.buildIdsCache(state.bill)
@@ -449,7 +449,7 @@ function createActions (dispatch: React.Dispatch<CashbookAction<Payload>>) {
       if (type === 'bill') utils.buildIdsCache(data as BillTable)
       dispatch({ type: t.import, payload: { importType: type, data } })
     },
-    add (type: DataType, data: Bill | Categories) {
+    add (type: DataType, data: Bill | Category) {
       if (type === 'bill' && !data.id) {
         data.id = utils.getUniqueUUID()
       }
@@ -473,10 +473,10 @@ function createActions (dispatch: React.Dispatch<CashbookAction<Payload>>) {
   }
 }
 
-interface CashbookContextType {
+export interface CashbookContextType {
   actions?: ReturnType<typeof createActions>,
   state?: CashbookState,
-  io?: typeof cashbook
+  io?: typeof io
 }
 
 export const CashbookContext = createContext<CashbookContextType>({})
@@ -488,7 +488,7 @@ function useCashbook () {
   const actions = createActions(dispatch)
 
   useEffect(() => {
-    const data = cashbook.load()
+    const data = io.load()
     actions.init({ ...iState, ...data })
     cache.billIds = {}
     return () => {
@@ -496,7 +496,7 @@ function useCashbook () {
     }
   }, [])
 
-  return { actions, state, io: cashbook }
+  return { actions, state, io: io }
 }
 
 export default useCashbook

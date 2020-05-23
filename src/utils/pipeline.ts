@@ -1,5 +1,5 @@
 /* eslint-disable no-undef */
-import { initalState, CashbookState, BillColumns, FilterSet, BillTable } from '../hooks/useCashbook'
+import { CashbookState, BillColumns, FilterSet, BillTable } from '../hooks/useCashbook'
 import cache from '../utils/cache'
 import Decimal from 'decimal.js'
 
@@ -40,17 +40,7 @@ const applyInitFilter: PipelineFunc = (state, update, _, extraData) => {
   const { filterConfig } = state
   const billTable = extraData?.initFilter ? extraData.initFilter.data : state.bill
 
-  const filterSetCache = { id: {}, time: {}, type: {}, category: {}, amount: {} } as {
-    [col in BillColumns]: {
-      [key: string]: boolean
-    }
-  }
-
   const nextFilterSet: FilterSet = { ...state.filterSet }
-
-  // Object.keys(nextFilterSet).forEach(key => {
-  //   nextFilterSet[key as BillColumns] = []
-  // })
 
   for (let i = 0; i < billTable.length; i++) {
     const bill = billTable[i]
