@@ -332,9 +332,14 @@ export function reducer (state: CashbookState, action: CashbookAction<Payload>):
           }
         )
         case 'categories': {
+          let currentCategories = p.data as CategoriesTable
+          if (state.categories.length) {
+            currentCategories = currentCategories.filter(item => !state.categoriesIndex[item.id])
+          }
+
           return (
             utils.createCategoriesIndex(
-              utils.concatTable<Category>(state, 'categories', p.data as CategoriesTable)
+              utils.concatTable<Category>(state, 'categories', currentCategories)
             )
           )
         }
