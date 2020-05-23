@@ -15,7 +15,8 @@ yarn
 
 ### `yarn start`
 
-启动本项目，并打开 [http://localhost:3000](http://localhost:3000) 以使用应用
+启动本项目，并打开 [http://localhost:3000](http://localhost:3000) 以使用应用</br>
+项目启动后，使用导入按钮导入项目内两个表格（[类型表](./csv/bill.csv)、[账单表](./csv/categories.csv)）即可正常使用
 
 ### `yarn test`
 
